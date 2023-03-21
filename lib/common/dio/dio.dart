@@ -1,8 +1,16 @@
 import 'package:delivery_app/common/const/data.dart';
+import 'package:delivery_app/common/storage.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-final dio = Dio();
+final dioProvider = Provider((ref) {
+  final dio = Dio();
+  final storage = ref.watch(storageProvider);
+
+  dio.interceptors.add(CustomInterceptor(storage: storage));
+  return dio;
+});
 
 class CustomInterceptor extends Interceptor {
   final FlutterSecureStorage storage;
@@ -31,6 +39,7 @@ class CustomInterceptor extends Interceptor {
   @override
   void onError(DioError err, ErrorInterceptorHandler handler) async {
     final refreshToken = await storage.read(key: refreshTokenKey);
+    final tokenDio = Dio();
 
     // unhandled error
     if (refreshToken == null ||
@@ -41,7 +50,7 @@ class CustomInterceptor extends Interceptor {
 
     // access token expired
     try {
-      final resp = await dio.post(
+      final resp = await tokenDio.post(
         'http://$ip/auth/token',
         options: Options(headers: {'authorization': 'Bearer $refreshToken'}),
       );
@@ -53,7 +62,7 @@ class CustomInterceptor extends Interceptor {
       err.requestOptions.headers
           .addAll({'authorization': 'Bearer $accessToken'});
 
-      final reResp = await dio.fetch(err.requestOptions);
+      final reResp = await tokenDio.fetch(err.requestOptions);
       return handler.resolve(reResp);
     } on DioError catch (e) {
       return handler.reject(e);
